@@ -9,7 +9,7 @@ library(ggplot2)
 library(ncdf4)
 library(plotly)
 
-##### Read in Data #####
+library(viridis)##### Read in Data #####
 
 tuned2000 <- read_csv(file = 'data/DBSCAN_output_esmm__NLDAS_tuned_2000.csv') %>%
   dplyr::select(!`...1`)%>%
@@ -60,10 +60,11 @@ cluster_assignment = read_csv('../bilevelclustering/data/clusterassignment_lagge
     kmeanstype == 'Standard' ~ "Standard",
     kmeanstype == 'Lagged' ~ "Space-time")) 
 
-ls_hist <- read_csv('../bilevelclustering/histogram_laggedstandard.csv')%>%
+ls_hist <- read_csv('../bilevelclustering/data/histogram_laggedstandard.csv')%>%
   select(!...1) %>%
   rename(Standard = labels_standard,
          `Space-time` = labels_lagged)
+
 
 ls_hist_fixed <- ls_hist %>%
   pivot_longer(cols = !SVDI,
@@ -114,7 +115,8 @@ pentad_id = function(day){
 
 
 ###### Creating SVDI categories #####
-svdi_clusters <- svdi_clusters %>%
+svdi_clusters <- svdi_clusters %>% 
+  filter(year %in% c(2000,2003)) %>%
   mutate(SVDI_severity = case_when(
     SVDI <= -3  ~ 'Extreme Wetness',
     SVDI > -3 & SVDI <= -2 ~ 'Severe Wetness',
@@ -146,18 +148,8 @@ svdi_clusters <- svdi_clusters %>%
   rowwise() %>%
   mutate(pentad_num = pentad_id(day))
 
-day_to_season <- tibble(day = seq(0,365)) %>%
-  mutate(season = case_when(
-    day < 79 ~ 'Winter',
-    day >= 79 & day < 171 ~ 'Spring',
-    day >= 171 & day < 264 ~ 'Summer',
-    day >= 264 & day < 355 ~ 'Fall',
-    day >= 355 ~ 'Winter'))
 
-svdi_clusters <- svdi_clusters %>%
-  left_join(day_to_season)
-
-svdi_clusters<- svdi_clusters %>%
+svdi_clusters<- svdi_clusters  %>%
   mutate(date = parse_date_time(x = paste(year, day), orders = "yj"))
 
 #### Plotting Begins #####
@@ -191,7 +183,7 @@ histograms <- ls_hist_fixed %>%
   theme_minimal()
 
 histogramdifferences_fig03 = histograms / timeseries  + plot_annotation(tag_levels = 'a', tag_prefix = '(',tag_suffix = ')')
-ggsave(file = '~/fig03_histogramdifferences.png' , plot = histogramdifferences_fig03 ,dpi = 300, 
+ggsave(file = '../bilevelclustering/figures/fig03_histogramdifferences.png' , plot = histogramdifferences_fig03 ,dpi = 300, 
        width = 25, height = 12.5, units = 'cm')
 
 
@@ -230,7 +222,7 @@ assignment_timeline <- cluster_assignment %>%
         legend.position = 'bottom')
 
 assignmenttimeline_fig02 = map   + assignment_timeline  + plot_annotation(tag_levels = 'a', tag_prefix = '(',tag_suffix = ')')  
-ggsave(file = '~/fig02_assignmenttimeline.png' , plot = assignmenttimeline_fig02 ,dpi = 300, 
+ggsave(file = '../bilevelclustering/figures/fig02_assignmenttimeline.png' , plot = assignmenttimeline_fig02 ,dpi = 300, 
        width = 25, height = 12.5, units = 'cm')
 
 
@@ -295,7 +287,7 @@ cluster4_assignment = base_map +
   geom_raster(data = propin4, aes(x = Long, y = Lat, fill = prop_days_in_cluster)) +
   scale_fill_viridis(
     name = 'Proportion of time \n assigned to driest cluster',
-    option = "magma") +
+    option = "turbo") +
   scale_x_continuous(name = 'Longitude',
                      breaks = seq(-125,-65,5),
                      labels = ~ paste0(.x*-1, "\u00B0", " W")) +
@@ -342,7 +334,7 @@ progression_fig06 = cluster_assignment %>%
         axis.text.x = element_text(angle = 0))   +
   guides(colour = guide_legend(nrow = 1))
 
-ggsave(file = '~/fig06_progression.png' , plot = progression_fig06,dpi = 300, 
+ggsave(file = '../bilevelclustering/figures/fig06_progression.png' , plot = progression_fig06,dpi = 300, 
        width = 25, height = 12.5, units = 'cm')
 
 
@@ -357,40 +349,40 @@ august_svdi <- svdi.array[ , ,213:245]
 august_svdi_avg <- apply(august_svdi,c(1,2), mean)
 
 
-r_august <- raster(t(august_svdi_avg), xmn=min(lon), xmx=max(lon), ymn=min(lat), ymx=max(lat), 
+r_august <- raster::raster(t(august_svdi_avg), xmn=min(lon), xmx=max(lon), ymn=min(lat), ymx=max(lat), 
                    crs=CRS("+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs+ towgs84=0,0,0"))
-r_august <- flip(r_august, direction ='y')
+r_august <- raster::flip(r_august, direction ='y')
 
-august_avg = gplot(r_august) +
+august_avg = rasterVis::gplot(r_august) +
   geom_tile(aes(fill=value)) +
   coord_fixed() +
   scale_fill_viridis(option = 'turbo',
                      name = 'SVDI',
                      limits = c(-1.5,2.5),
-                     breaks = seq(-1.5,2.5,1)) +
+                     breaks = seq(-1.5,2.5,1),
+                     na.value = "transparent") +
   scale_x_continuous(name = 'Longitude',
                      breaks = seq(-125,-65,5),
-                     labels = ~ paste0(.x, "\u00B0")
-  ) +
+                     labels = ~ paste0(.x*-1, "\u00B0", " W")) +
   scale_y_continuous(name = 'Latitude', 
                      breaks = seq(20,60,5),
                      expand = c(0,0),
-                     labels = ~ paste0(.x, "\u00B0")) + 
+                     labels = ~ paste0(.x, "\u00B0", ' N')) + 
   geom_rect(xmin =-102, xmax = -87,
             ymin = 35, ymax = 50, fill = NA, color ='black') +
-  theme(
-    panel.background = element_rect(fill = 'gray50'),
-    legend.position = 'bottom',
-    panel.grid = element_line(colour = 'gray50'),
-    axis.ticks = element_line(colour = 'gray50'))
+  theme_minimal() +
+  theme(legend.position = 'bottom',
+        axis.text.x = element_text(angle = 90))
 
 
 
 
-august_avg+cluster4_assignment + plot_annotation(tag_levels = 'A')  
+driestclusterdrought_fig04 = august_avg+cluster4_assignment + plot_annotation(tag_levels = 'a',tag_prefix = '(',tag_suffix = ')')  
 
 
 
+ggsave(file = '../bilevelclustering/figures/fig04_driestcluster.png' , plot = driestclusterdrought_fig04 ,dpi = 300, 
+       width = 25, height = 12.5, units = 'cm')
 
 
 ##### Publication Plots #######
@@ -461,11 +453,11 @@ centroidtracking_fig09 <- base_map +
         legend.title = element_blank(),
         axis.text.x = element_text(angle = 90))
 
-ggsave("fig09_centroidtracking.png", centroidtracking_fig09, dpi = 300,
+ggsave(file = "../bilevelclustering/figures/fig09_centroidtracking.png", centroidtracking_fig09, dpi = 300,
        width = 25, height = 12.5, units = 'cm')
 
 #### Average Drought Duration ####
-svdi_clusters_w_area %>%
+droughtduration_fig15 <- svdi_clusters %>%
   group_by(year,drought_severity,cluster_id) %>%
   summarise(min_day = min(day),
             max_day = max(day)) %>%
@@ -493,7 +485,8 @@ svdi_clusters_w_area %>%
         strip.background = element_blank(),
         strip.text.x = element_blank()) 
 
-
+ggsave(file = "../bilevelclustering/figures/fig15_droughtduration.png", droughtduration_fig15, dpi = 300,
+       width = 25, height = 12.5, units = 'cm')
 
 #### Mean Intensity #####
 mean_intensity = svdi_clusters_w_area %>%
@@ -542,16 +535,22 @@ svdi_clusters_w_area  %>%
 
 #### Drought Spatial Extent Snapshots #####
 
-drought_2003 = svdi_clusters_w_area %>%
+drought_2003 = svdi_clusters %>%
   filter(year == 2003,
          drought_severity == 'moderate') %>%
   mutate(week = lubridate::week(date),
          start_of_week = format(lubridate::ymd(lubridate::floor_date(date, unit="week")),"%d %B %Y")) 
 
+  
+[
+
+drought_2003 <- drought_2003 %>%
+                mutate(start_of_week = as_factor(start_of_week))
+
 
 #format(lubridate::ymd(unique(drought_2003$start_of_week)), "%d %B %Y")
 snapshots_fig11 <- base_map + geom_tile(data = drought_2003,
-                                        aes(x = long, y = lat, fill = cluster_id)) +
+                                        aes(x = long, y = lat, fill = cluster_id, group = start_of_week)) +
   #theme(legend.position = "none") +
   facet_wrap(vars(start_of_week)) +
   scale_x_continuous(name = ' Longitude',
@@ -571,7 +570,7 @@ snapshots_fig11 <- base_map + geom_tile(data = drought_2003,
 ggsave(file = 'fig11_snapshotsv1.png',plot = snapshots_fig11, dpi = 300,
        width = 27, height = 25, units = 'cm')
 
-drought_2000 = svdi_clusters_w_area %>%
+drought_2000 = svdi_clusters %>%
   filter(year == 2000,
          cluster_id == 11, drought_severity == 'severe') %>%
   mutate(week = lubridate::week(date),
